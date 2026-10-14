@@ -10,6 +10,7 @@ import { PaymentTransactionView } from './components/views/PaymentTransactionVie
 import { UpdatesOffersView } from './components/views/UpdatesOffersView';
 import { BusinessReportsView } from './components/views/BusinessReportsView';
 import { RolesPermissionsView } from './components/views/RolesPermissionsView';
+import { WorkerManagementView } from './components/views/WorkerManagementView';
 
 const DashboardContent: React.FC = () => {
   const { activeTab } = useAdmin();
@@ -21,6 +22,8 @@ const DashboardContent: React.FC = () => {
         return <OverviewView />;
       case 'users':
         return <UserManagementView />;
+      case 'workers':
+        return <WorkerManagementView />;
       case 'content':
         return <ContentManagementView />;
       case 'payments':

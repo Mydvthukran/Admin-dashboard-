@@ -236,7 +236,7 @@ export interface AuditLog {
   adminName: string;
   adminEmail: string;
   action: string;
-  entityType: 'User' | 'KYC' | 'Payment' | 'Refund' | 'Content' | 'Listing' | 'Coupon' | 'Role' | 'Commission';
+  entityType: 'User' | 'KYC' | 'Payment' | 'Refund' | 'Content' | 'Listing' | 'Coupon' | 'Role' | 'Commission' | 'Worker';
   entityId: string;
   details: string;
   ipAddress: string;
@@ -247,4 +247,73 @@ export interface ToastMessage {
   type: 'success' | 'error' | 'info' | 'warning';
   title: string;
   message: string;
+}
+
+export type WorkerStatus = 'on_duty' | 'on_job' | 'off_duty' | 'on_leave' | 'suspended';
+
+export type WorkerTrade =
+  | 'AC & Refrigeration'
+  | 'Electrical & Wiring'
+  | 'Plumbing & Sanitation'
+  | 'Deep Cleaning & Sanitization'
+  | 'Carpentry & Woodwork'
+  | 'Painting & Waterproofing'
+  | 'Appliance Repair'
+  | 'Beauty & Grooming';
+
+export type SkillLevel = 'Apprentice' | 'Certified Pro' | 'Master Specialist';
+
+export type WorkerShift =
+  | 'Morning (08:00 - 14:00)'
+  | 'Evening (14:00 - 20:00)'
+  | 'Full Day (08:00 - 20:00)'
+  | 'Emergency On-Call';
+
+export interface FieldJob {
+  id: string;
+  bookingId: string;
+  customerName: string;
+  customerPhone: string;
+  address: string;
+  zone: string;
+  serviceTitle: string;
+  status: 'assigned' | 'traveling' | 'in_progress' | 'completed' | 'cancelled';
+  scheduledTime: string;
+  payoutAmount: number;
+  customerOtpRequired?: boolean;
+}
+
+export interface Worker {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  avatarUrl?: string;
+  trade: WorkerTrade;
+  secondaryTrades?: WorkerTrade[];
+  skillLevel: SkillLevel;
+  city: 'Kolkata' | 'Nabadwip' | 'Howrah';
+  zone: string;
+  status: WorkerStatus;
+  shift: WorkerShift;
+  rating: number;
+  totalJobsDone: number;
+  completionRate: number;
+  onTimeRate: number;
+  todayEarnings: number;
+  pendingPayout: number;
+  activeJob?: FieldJob;
+  safetyGearVerified: boolean;
+  policeVerificationDone: boolean;
+  aadhaarVerified: boolean;
+  emergencyContact: {
+    name: string;
+    phone: string;
+    relation: string;
+  };
+  vehicleType?: 'Two-Wheeler (Motorcycle)' | 'Bicycle' | 'Public Transit' | 'Van/Tempo';
+  joinedDate: string;
+  lastLocationUpdate?: string;
+  notes?: string;
+  suspensionReason?: string;
 }

@@ -13,7 +13,9 @@ import {
   Megaphone,
   PlusCircle,
   Eye,
-  AlertTriangle
+  AlertTriangle,
+  HardHat,
+  Radio
 } from 'lucide-react';
 
 export const OverviewView: React.FC = () => {
@@ -22,6 +24,7 @@ export const OverviewView: React.FC = () => {
     kycDocs,
     payments,
     refunds,
+    workers,
     setActiveTab
   } = useAdmin();
 
@@ -31,6 +34,8 @@ export const OverviewView: React.FC = () => {
   const pendingKyc = kycDocs.filter((k) => k.status === 'pending');
   const pendingRefunds = refunds.filter((r) => r.status === 'pending');
   const completedPayments = payments.filter((p) => p.status === 'completed');
+  const activeWorkersOnDuty = workers.filter((w) => w.status === 'on_duty' || w.status === 'on_job').length;
+  const ongoingFieldJobs = workers.filter((w) => w.activeJob).length;
 
   const totalGMV = completedPayments.reduce((acc, curr) => acc + curr.amount, 0);
   const totalCommission = completedPayments.reduce((acc, curr) => acc + curr.commissionAmount, 0);
@@ -121,6 +126,49 @@ export const OverviewView: React.FC = () => {
           <div className="stat-footer text-muted">
             <span>{users.filter((u) => u.role === 'customer').length} Customers · {users.filter((u) => u.role === 'professional').length} Pros</span>
           </div>
+        </div>
+      </div>
+
+      {/* Workforce Live Field Status Card */}
+      <div
+        className="card mb-6 p-4 flex items-center justify-between"
+        style={{
+          background: 'linear-gradient(90deg, rgba(255,107,0,0.12) 0%, rgba(18,24,38,0.95) 100%)',
+          borderLeft: '4px solid var(--px-primary)',
+          borderRight: '1px solid var(--border-subtle)',
+          borderTop: '1px solid var(--border-subtle)',
+          borderBottom: '1px solid var(--border-subtle)'
+        }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="stat-icon-wrapper bg-orange-dim" style={{ width: '42px', height: '42px' }}>
+            <HardHat size={22} className="text-punch-orange" />
+          </div>
+          <div>
+            <div className="font-bold text-base flex items-center gap-2">
+              Hyperlocal Field Workforce: {activeWorkersOnDuty} of {workers.length} Technicians On-Duty
+              <span className="badge badge-success text-xs">Live Operations</span>
+            </div>
+            <div className="text-xs text-muted mt-0.5">
+              {ongoingFieldJobs} active tasks in field · 98.1% on-time arrival rate · Avg response time: 3.4 mins across Kolkata & Nabadwip
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn btn-secondary btn-sm flex items-center gap-1.5"
+            onClick={() => setActiveTab('workers', 'dispatch')}
+          >
+            <Radio size={14} className="text-purple animate-pulse" />
+            <span>Live Dispatch</span>
+          </button>
+          <button
+            className="btn btn-primary btn-sm flex items-center gap-1.5"
+            onClick={() => setActiveTab('workers', 'directory')}
+          >
+            <span>Worker Operations</span>
+            <span>&rarr;</span>
+          </button>
         </div>
       </div>
 

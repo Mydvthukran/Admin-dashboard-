@@ -14,6 +14,12 @@ The admin dashboard directly implements the operational blueprint:
 - **iii. Verify**: Dedicated Pro KYC and credentialing station. Document inspection viewer for Aadhaar, Voter ID, Trade Licenses, Skill Certificates, and verified selfies with approval/rejection workflows.
 - **iv. Manage**: Account tier allocation (Bronze, Silver, Gold, Platinum), wallet balance adjustments, and profile data editor.
 
+### Worker Management (Workforce & Field Dispatch)
+- **i. Directory & Roster**: Centralized field technician directory. Filter by trade (AC & Refrigeration, Electrical, Plumbing, Cleaning, Carpentry, Painting, Appliance, Grooming), duty status, operating zone, and shift. Inspect worker dossiers, vehicle types, ratings, and emergency contacts.
+- **ii. Live Dispatch & Attendance**: Real-time on-ground operational command. Monitor ongoing field tasks, track technician status (On Duty, En Route, On Site), and trigger 1-click job allocations to nearby available workers.
+- **iii. Skills & Safety Gear**: Pre-deployment safety equipment audits (insulated tools, safety harness, sanitized uniform, ID badge), trade skill tiers (Apprentice, Certified Pro, Master Specialist), police clearances, and complete new worker onboarding.
+- **iv. Performance & Payouts**: Daily task earnings tracking, completion % and on-time arrival SLA monitoring, and instant direct IMPS wage disbursal with payment reference logging.
+
 ### 2. Content Management
 - **i. Banner**: Promotional feed and mobile app hero carousel management. Includes an **interactive live mobile screen simulator** to preview banners as seen on the PunchX consumer app, with placement controls and click metrics.
 - **ii. Content**: Real-time legal policy and terms editor (Terms of Service, Privacy Policy, Safety Guidelines, FAQs) with live timestamp updates.

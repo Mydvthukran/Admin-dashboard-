@@ -23,7 +23,9 @@ import {
   ShieldCheck,
   ChevronRight,
   Flame,
-  X
+  X,
+  HardHat,
+  Radio
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,11 +34,12 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
-  const { activeTab, activeSubtab, setActiveTab, kycDocs, refunds, failedTransactions } = useAdmin();
+  const { activeTab, activeSubtab, setActiveTab, kycDocs, refunds, failedTransactions, workers } = useAdmin();
 
   const pendingKycCount = kycDocs.filter((k) => k.status === 'pending').length;
   const pendingRefundCount = refunds.filter((r) => r.status === 'pending').length;
   const failedTxCount = failedTransactions.filter((f) => !f.resolved).length;
+  const onDutyWorkerCount = workers.filter((w) => w.status === 'on_duty' || w.status === 'on_job').length;
 
   const handleNavClick = (tab: string, subtab?: string) => {
     setActiveTab(tab, subtab);
@@ -134,6 +137,69 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
                 >
                   <UserCog size={15} />
                   <span>iv. Manage</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Worker Management (Workforce & Field Dispatch) */}
+          <div className="nav-group">
+            <div
+              className={`nav-group-header ${activeTab === 'workers' ? 'active-parent' : ''}`}
+              onClick={() => handleNavClick('workers', activeTab === 'workers' ? activeSubtab : 'directory')}
+            >
+              <div className="nav-group-title">
+                <span className="nav-number" style={{ background: 'var(--px-primary-dim)', color: 'var(--px-primary)', border: '1px solid var(--px-primary-border)' }}>W</span>
+                <HardHat size={18} className="nav-icon" />
+                <span>Worker Management</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {onDutyWorkerCount > 0 && (
+                  <span className="badge-count badge-emerald" title={`${onDutyWorkerCount} active field technicians`}>
+                    {onDutyWorkerCount}
+                  </span>
+                )}
+                <ChevronRight
+                  size={14}
+                  className={`nav-arrow ${activeTab === 'workers' ? 'expanded' : ''}`}
+                />
+              </div>
+            </div>
+
+            {activeTab === 'workers' && (
+              <div className="nav-subitems">
+                <button
+                  className={`sub-nav-item ${activeSubtab === 'directory' ? 'active' : ''}`}
+                  onClick={() => handleNavClick('workers', 'directory')}
+                >
+                  <Eye size={15} />
+                  <span>i. Directory & Roster</span>
+                </button>
+                <button
+                  className={`sub-nav-item ${activeSubtab === 'dispatch' ? 'active' : ''}`}
+                  onClick={() => handleNavClick('workers', 'dispatch')}
+                >
+                  <Radio size={15} />
+                  <span>ii. Live Dispatch</span>
+                  {workers.filter((w) => w.status === 'on_job').length > 0 && (
+                    <span className="badge-count badge-purple">
+                      {workers.filter((w) => w.status === 'on_job').length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  className={`sub-nav-item ${activeSubtab === 'skills' ? 'active' : ''}`}
+                  onClick={() => handleNavClick('workers', 'skills')}
+                >
+                  <ShieldCheck size={15} />
+                  <span>iii. Skills & Safety</span>
+                </button>
+                <button
+                  className={`sub-nav-item ${activeSubtab === 'payouts' ? 'active' : ''}`}
+                  onClick={() => handleNavClick('workers', 'payouts')}
+                >
+                  <Percent size={15} />
+                  <span>iv. Payouts & SLA</span>
                 </button>
               </div>
             )}

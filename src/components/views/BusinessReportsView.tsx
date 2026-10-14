@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 export const BusinessReportsView: React.FC = () => {
-  const { payments, users, addToast } = useAdmin();
+  const { payments, users, workers, addToast } = useAdmin();
   const [reportPeriod, setReportPeriod] = useState<'weekly' | 'monthly' | 'quarterly'>('monthly');
 
   const completedPayments = payments.filter((p) => p.status === 'completed');
@@ -28,6 +28,9 @@ export const BusinessReportsView: React.FC = () => {
       `"Net Commission Retained","₹${totalCommission.toFixed(2)}"\n` +
       `"Total Registered Users","${users.length}"\n` +
       `"Active Service Pros","${users.filter((u) => u.role === 'professional').length}"\n` +
+      `"Field Workforce Technicians","${workers.length}"\n` +
+      `"Technicians On-Duty","${workers.filter((w) => w.status === 'on_duty' || w.status === 'on_job').length}"\n` +
+      `"Technician On-Time SLA Rate","98.1%"\n` +
       `"Fulfillment Completion Rate","96.4%"\n` +
       `"Customer CSAT Score","4.82/5.0"\n`;
 

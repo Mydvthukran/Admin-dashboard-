@@ -16,7 +16,10 @@ import type {
   AdminRole,
   AdminUser,
   AuditLog,
-  ToastMessage
+  ToastMessage,
+  Worker,
+  WorkerStatus,
+  FieldJob
 } from '../types';
 import {
   INITIAL_USERS,
@@ -34,7 +37,8 @@ import {
   INITIAL_ANNOUNCEMENTS,
   INITIAL_ROLES,
   INITIAL_ADMINS,
-  INITIAL_AUDIT_LOGS
+  INITIAL_AUDIT_LOGS,
+  INITIAL_WORKERS
 } from '../data/initialData';
 
 interface AdminContextType {
@@ -54,6 +58,7 @@ interface AdminContextType {
   roles: AdminRole[];
   admins: AdminUser[];
   auditLogs: AuditLog[];
+  workers: Worker[];
   currentAdmin: AdminUser;
   toasts: ToastMessage[];
   activeTab: string;
@@ -72,6 +77,17 @@ interface AdminContextType {
   unblockUser: (userId: string) => void;
   updateUser: (userId: string, updates: Partial<User>) => void;
   verifyKYC: (docId: string, approve: boolean, reason?: string) => void;
+
+  // Worker Management Actions
+  addWorker: (worker: Omit<Worker, 'id' | 'totalJobsDone' | 'completionRate' | 'onTimeRate' | 'todayEarnings' | 'pendingPayout'>) => void;
+  updateWorker: (id: string, updates: Partial<Worker>) => void;
+  deleteWorker: (id: string) => void;
+  setWorkerStatus: (id: string, status: WorkerStatus, reason?: string) => void;
+  dispatchJobToWorker: (workerId: string, jobData: Omit<FieldJob, 'id'>) => void;
+  completeWorkerJob: (workerId: string) => void;
+  cancelWorkerJob: (workerId: string, reason?: string) => void;
+  settleWorkerPayout: (workerId: string, amount: number) => void;
+  verifyWorkerCompliance: (workerId: string, checkType: 'safetyGear' | 'police' | 'aadhaar', verified: boolean) => void;
 
   addBanner: (banner: Omit<Banner, 'id' | 'clicks'>) => void;
   updateBanner: (id: string, updates: Partial<Banner>) => void;
@@ -141,6 +157,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [roles, setRoles] = useState<AdminRole[]>(() => getStored('roles', INITIAL_ROLES));
   const [admins, setAdmins] = useState<AdminUser[]>(() => getStored('admins', INITIAL_ADMINS));
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => getStored('logs', INITIAL_AUDIT_LOGS));
+  const [workers, setWorkers] = useState<Worker[]>(() => getStored('workers', INITIAL_WORKERS));
 
   const [currentAdmin, setCurrentAdminState] = useState<AdminUser>(INITIAL_ADMINS[0]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -164,6 +181,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => { setStored('roles', roles); }, [roles]);
   useEffect(() => { setStored('admins', admins); }, [admins]);
   useEffect(() => { setStored('logs', auditLogs); }, [auditLogs]);
+  useEffect(() => { setStored('workers', workers); }, [workers]);
 
   const addToast = (title: string, message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
     const id = 'toast_' + Date.now() + Math.random().toString(36).substring(2, 5);
@@ -199,6 +217,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
       // Default subtabs for main categories
       if (tab === 'users') setActiveSubtab('view');
+      else if (tab === 'workers') setActiveSubtab('directory');
       else if (tab === 'content') setActiveSubtab('banner');
       else if (tab === 'payments') setActiveSubtab('done');
       else if (tab === 'updates') setActiveSubtab('updates');
@@ -504,6 +523,164 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addToast('Admin Team Member Added', `Invitation sent to ${newAdmin.email}.`);
   };
 
+  // 6. Worker Management Actions
+  const addWorker = (workerData: Omit<Worker, 'id' | 'totalJobsDone' | 'completionRate' | 'onTimeRate' | 'todayEarnings' | 'pendingPayout'>) => {
+    const newWorker: Worker = {
+      ...workerData,
+      id: 'wrk_' + String(Date.now()).slice(-4) + Math.floor(Math.random() * 90 + 10),
+      totalJobsDone: 0,
+      completionRate: 100,
+      onTimeRate: 100,
+      todayEarnings: 0,
+      pendingPayout: 0,
+      rating: 5.0
+    };
+    setWorkers((prev) => [newWorker, ...prev]);
+    logAction('WORKER_ONBOARDED', 'Worker', newWorker.id, `Onboarded field worker: ${newWorker.name} (${newWorker.trade} - ${newWorker.city})`);
+    addToast('Worker Onboarded', `${newWorker.name} added to ${newWorker.zone} roster as ${newWorker.trade}.`, 'success');
+  };
+
+  const updateWorker = (id: string, updates: Partial<Worker>) => {
+    setWorkers((prev) => prev.map((w) => (w.id === id ? { ...w, ...updates } : w)));
+    logAction('WORKER_UPDATED', 'Worker', id, `Updated profile details for worker ${id}`);
+    addToast('Worker Profile Updated', 'Worker details saved successfully.');
+  };
+
+  const deleteWorker = (id: string) => {
+    const target = workers.find((w) => w.id === id);
+    setWorkers((prev) => prev.filter((w) => w.id !== id));
+    logAction('WORKER_DELETED', 'Worker', id, `Removed worker ${target?.name} from active platform`);
+    addToast('Worker Removed', `${target?.name || 'Worker'} removed from directory.`, 'info');
+  };
+
+  const setWorkerStatus = (id: string, status: WorkerStatus, reason?: string) => {
+    setWorkers((prev) =>
+      prev.map((w) => {
+        if (w.id === id) {
+          return {
+            ...w,
+            status,
+            suspensionReason: status === 'suspended' ? reason : undefined
+          };
+        }
+        return w;
+      })
+    );
+    const target = workers.find((w) => w.id === id);
+    const statusLabels: Record<WorkerStatus, string> = {
+      on_duty: 'On Duty & Ready',
+      on_job: 'On Job',
+      off_duty: 'Off Duty (Offline)',
+      on_leave: 'On Leave',
+      suspended: 'Suspended'
+    };
+    logAction('WORKER_STATUS_CHANGED', 'Worker', id, `Changed ${target?.name} status to ${status}${reason ? ` (${reason})` : ''}`);
+    addToast('Duty Status Updated', `${target?.name} is now marked ${statusLabels[status]}.`, status === 'suspended' ? 'warning' : 'success');
+  };
+
+  const dispatchJobToWorker = (workerId: string, jobData: Omit<FieldJob, 'id'>) => {
+    const newJob: FieldJob = {
+      ...jobData,
+      id: 'job_' + Date.now()
+    };
+    setWorkers((prev) =>
+      prev.map((w) => {
+        if (w.id === workerId) {
+          return {
+            ...w,
+            status: 'on_job',
+            activeJob: newJob,
+            lastLocationUpdate: 'Dispatched to ' + newJob.zone
+          };
+        }
+        return w;
+      })
+    );
+    const target = workers.find((w) => w.id === workerId);
+    logAction('FIELD_JOB_DISPATCHED', 'Worker', workerId, `Dispatched Order #${newJob.bookingId} (${newJob.serviceTitle}) to ${target?.name}`);
+    addToast('Job Dispatched', `Booking #${newJob.bookingId} assigned to ${target?.name}. Client notified.`, 'success');
+  };
+
+  const completeWorkerJob = (workerId: string) => {
+    const target = workers.find((w) => w.id === workerId);
+    if (!target || !target.activeJob) return;
+
+    const payout = target.activeJob.payoutAmount || 600;
+    setWorkers((prev) =>
+      prev.map((w) => {
+        if (w.id === workerId) {
+          return {
+            ...w,
+            status: 'on_duty',
+            activeJob: undefined,
+            totalJobsDone: w.totalJobsDone + 1,
+            todayEarnings: w.todayEarnings + payout,
+            pendingPayout: w.pendingPayout + payout,
+            lastLocationUpdate: 'Job completed in ' + (w.activeJob?.zone || w.zone)
+          };
+        }
+        return w;
+      })
+    );
+    logAction('FIELD_JOB_COMPLETED', 'Worker', workerId, `Completed order #${target.activeJob.bookingId} (${target.activeJob.serviceTitle}) for ₹${payout}`);
+    addToast('Job Completed', `Order #${target.activeJob.bookingId} marked complete. ₹${payout} credited to ${target.name}.`, 'success');
+  };
+
+  const cancelWorkerJob = (workerId: string, reason?: string) => {
+    const target = workers.find((w) => w.id === workerId);
+    if (!target || !target.activeJob) return;
+
+    const orderId = target.activeJob.bookingId;
+    setWorkers((prev) =>
+      prev.map((w) => {
+        if (w.id === workerId) {
+          return {
+            ...w,
+            status: 'on_duty',
+            activeJob: undefined,
+            lastLocationUpdate: 'Available in ' + w.zone
+          };
+        }
+        return w;
+      })
+    );
+    logAction('FIELD_JOB_CANCELLED', 'Worker', workerId, `Cancelled assignment #${orderId} for ${target.name}: ${reason || 'Manual release'}`);
+    addToast('Job Assignment Released', `Task #${orderId} unassigned from ${target.name}. Worker returned to available pool.`, 'info');
+  };
+
+  const settleWorkerPayout = (workerId: string, amount: number) => {
+    setWorkers((prev) =>
+      prev.map((w) => {
+        if (w.id === workerId) {
+          return {
+            ...w,
+            pendingPayout: Math.max(0, w.pendingPayout - amount)
+          };
+        }
+        return w;
+      })
+    );
+    const target = workers.find((w) => w.id === workerId);
+    logAction('WORKER_PAYOUT_DISBURSED', 'Worker', workerId, `Disbursed ₹${amount} wage payout to ${target?.name}`);
+    addToast('Payout Disbursed', `₹${amount} transferred to ${target?.name} via direct IMPS rail.`, 'success');
+  };
+
+  const verifyWorkerCompliance = (workerId: string, checkType: 'safetyGear' | 'police' | 'aadhaar', verified: boolean) => {
+    setWorkers((prev) =>
+      prev.map((w) => {
+        if (w.id === workerId) {
+          if (checkType === 'safetyGear') return { ...w, safetyGearVerified: verified };
+          if (checkType === 'police') return { ...w, policeVerificationDone: verified };
+          if (checkType === 'aadhaar') return { ...w, aadhaarVerified: verified };
+        }
+        return w;
+      })
+    );
+    const target = workers.find((w) => w.id === workerId);
+    logAction('WORKER_COMPLIANCE_UPDATED', 'Worker', workerId, `Updated ${checkType} compliance status to ${verified} for ${target?.name}`);
+    addToast('Compliance Updated', `${target?.name} ${checkType} status updated.`, 'info');
+  };
+
   const resetToDefaults = () => {
     setUsers(INITIAL_USERS);
     setKycDocs(INITIAL_KYC_DOCS);
@@ -520,6 +697,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setRoles(INITIAL_ROLES);
     setAdmins(INITIAL_ADMINS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
+    setWorkers(INITIAL_WORKERS);
     localStorage.clear();
     addToast('Reset Complete', 'Mock data restored to initial state.', 'info');
   };
@@ -543,6 +721,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         roles,
         admins,
         auditLogs,
+        workers,
         currentAdmin,
         toasts,
         activeTab,
@@ -558,6 +737,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         unblockUser,
         updateUser,
         verifyKYC,
+        addWorker,
+        updateWorker,
+        deleteWorker,
+        setWorkerStatus,
+        dispatchJobToWorker,
+        completeWorkerJob,
+        cancelWorkerJob,
+        settleWorkerPayout,
+        verifyWorkerCompliance,
         addBanner,
         updateBanner,
         deleteBanner,

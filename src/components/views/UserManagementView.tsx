@@ -20,7 +20,8 @@ import {
   ExternalLink,
   Lock,
   Unlock,
-  Edit3
+  Edit3,
+  HardHat
 } from 'lucide-react';
 
 export const UserManagementView: React.FC = () => {
@@ -29,6 +30,7 @@ export const UserManagementView: React.FC = () => {
     kycDocs,
     activeSubtab,
     setActiveSubtab,
+    setActiveTab,
     searchQuery,
     blockUser,
     unblockUser,
@@ -160,6 +162,34 @@ export const UserManagementView: React.FC = () => {
             <span>iv. Manage</span>
           </button>
         </div>
+      </div>
+
+      {/* Workforce Cross-link Banner */}
+      <div
+        className="card mb-4 p-3 flex items-center justify-between"
+        style={{
+          background: 'linear-gradient(90deg, rgba(255, 107, 0, 0.12) 0%, rgba(18, 24, 38, 0.95) 100%)',
+          border: '1px solid rgba(255, 107, 0, 0.25)'
+        }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="stat-icon-wrapper bg-orange-dim" style={{ width: '36px', height: '36px' }}>
+            <HardHat size={18} className="text-punch-orange" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-main">Looking for On-Ground Field Technicians & Dispatch Operations?</div>
+            <div className="text-xs text-muted">
+              Access real-time technician attendance, trade qualifications, GPS job dispatches, and daily wage settlements.
+            </div>
+          </div>
+        </div>
+        <button
+          className="btn btn-sm btn-primary ml-auto flex items-center gap-1.5"
+          onClick={() => setActiveTab('workers', 'directory')}
+        >
+          <span>Open Worker Management</span>
+          <span>&rarr;</span>
+        </button>
       </div>
 
       {/* SUBTAB 1: VIEW */}
