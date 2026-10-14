@@ -22,6 +22,14 @@ import type {
   FieldJob
 } from '../types';
 import {
+  mainPlatformApi,
+  getStoredApiConfig,
+  saveApiConfig,
+  type ApiConfig,
+  type ConnectionHealth,
+  type DynamicPlatformSettings
+} from '../services/apiService';
+import {
   INITIAL_USERS,
   INITIAL_KYC_DOCS,
   INITIAL_BANNERS,
@@ -117,6 +125,16 @@ interface AdminContextType {
   updateRolePermissions: (roleId: string, permissions: AdminRole['permissions']) => void;
   addAdmin: (admin: Omit<AdminUser, 'id' | 'lastActive'>) => void;
   resetToDefaults: () => void;
+
+  // Platform Bridge & Synchronization
+  connectionHealth: ConnectionHealth;
+  isSyncing: boolean;
+  platformSettings: DynamicPlatformSettings;
+  apiBridgeConfig: ApiConfig;
+  testConnection: () => Promise<ConnectionHealth>;
+  syncWithMainPlatform: () => Promise<void>;
+  updatePlatformSettings: (settings: Partial<DynamicPlatformSettings>) => Promise<void>;
+  saveApiBridgeConfig: (config: ApiConfig) => void;
 }
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
@@ -158,6 +176,31 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [admins, setAdmins] = useState<AdminUser[]>(() => getStored('admins', INITIAL_ADMINS));
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => getStored('logs', INITIAL_AUDIT_LOGS));
   const [workers, setWorkers] = useState<Worker[]>(() => getStored('workers', INITIAL_WORKERS));
+  const [apiBridgeConfig, setApiBridgeConfigState] = useState<ApiConfig>(getStoredApiConfig);
+  const [connectionHealth, setConnectionHealth] = useState<ConnectionHealth>({
+    connected: false,
+    status: 'checking',
+    latencyMs: 0,
+    lastChecked: null,
+  });
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [platformSettings, setPlatformSettingsState] = useState<DynamicPlatformSettings>(() =>
+    getStored('platform_settings', {
+      convenienceFee: 29,
+      emergencySurcharge: 99,
+      defaultCommissionRate: 0.15,
+      gstRate: 0.18,
+      maintenanceMode: false,
+      maintenanceNotice: 'Scheduled system maintenance in progress. Services will resume shortly.',
+      announcementBanner: 'PunchX Monsoon Coverage Active — 100% On-Time SLA Guarantee across Kolkata & Nabadwip',
+      activeGeofences: [
+        { id: 'geo_kolkata', name: 'Kolkata Metropolitan & EM Bypass', radiusKm: 8, active: true },
+        { id: 'geo_nabadwip', name: 'Nabadwip Circular Sector', radiusKm: 8, active: true },
+        { id: 'geo_howrah', name: 'Howrah Central Hub', radiusKm: 6, active: true },
+      ],
+      updatedAt: new Date().toISOString(),
+    })
+  );
 
   const [currentAdmin, setCurrentAdminState] = useState<AdminUser>(INITIAL_ADMINS[0]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -182,6 +225,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => { setStored('admins', admins); }, [admins]);
   useEffect(() => { setStored('logs', auditLogs); }, [auditLogs]);
   useEffect(() => { setStored('workers', workers); }, [workers]);
+  useEffect(() => { setStored('platform_settings', platformSettings); }, [platformSettings]);
 
   const addToast = (title: string, message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
     const id = 'toast_' + Date.now() + Math.random().toString(36).substring(2, 5);
@@ -209,6 +253,148 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setAuditLogs((prev) => [newLog, ...prev]);
   };
+
+  const saveApiBridgeConfig = (config: ApiConfig) => {
+    saveApiConfig(config);
+    setApiBridgeConfigState(config);
+    mainPlatformApi.updateConfig(config);
+  };
+
+  const testConnection = async (): Promise<ConnectionHealth> => {
+    const health = await mainPlatformApi.probeHealth();
+    setConnectionHealth(health);
+    return health;
+  };
+
+  const syncWithMainPlatform = async () => {
+    setIsSyncing(true);
+    addToast('Sync Started', 'Connecting to PunchX main platform backend...', 'info');
+
+    try {
+      const health = await testConnection();
+      if (!health.connected) {
+        addToast(
+          'Standalone Mode Active',
+          `Main platform at ${apiBridgeConfig.baseUrl} is not reachable. All changes remain saved in local storage.`,
+          'warning'
+        );
+        setIsSyncing(false);
+        return;
+      }
+
+      // 1. Fetch remote users
+      const usersRes = await mainPlatformApi.fetchUsers();
+      if (usersRes.success && usersRes.data?.users && usersRes.data.users.length > 0) {
+        const remoteUsers: User[] = usersRes.data.users.map((ru: any) => ({
+          id: ru.uid || ru.id,
+          name: ru.name || 'PunchX User',
+          email: ru.email || '',
+          phone: ru.phone || '',
+          role: ru.role === 'worker' ? 'professional' : ru.role === 'admin' ? 'admin' : 'customer',
+          status: ru.status === 'SUSPENDED' ? 'blocked' : 'active',
+          joinDate: ru.createdAt ? ru.createdAt.split('T')[0] : '2026-01-10',
+          kycStatus: ru.role === 'worker' ? (ru.status === 'APPROVED' ? 'verified' : 'pending') : 'verified',
+          serviceCategory: ru.workerSkill || 'General',
+          rating: ru.workerRating || 4.8,
+          totalOrders: ru.workerCompletedJobs || 0,
+          totalSpendOrEarned: 0,
+          city: ru.area || 'Kolkata',
+          avatarUrl: ru.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+        }));
+
+        setUsers((prev) => {
+          const map = new Map<string, User>();
+          prev.forEach((u) => map.set(u.id, u));
+          remoteUsers.forEach((ru) => map.set(ru.id, { ...map.get(ru.id), ...ru }));
+          return Array.from(map.values());
+        });
+      }
+
+      // 2. Fetch remote workers
+      const workersRes = await mainPlatformApi.fetchWorkers();
+      if (workersRes.success && workersRes.data?.applications) {
+        const remoteWorkers: Worker[] = workersRes.data.applications.map((app: any) => ({
+          id: app.id || app.uid,
+          name: app.legalName || app.name || 'Specialist',
+          phone: app.phone || '+91 98765 43210',
+          email: app.email || '',
+          trade: (app.skill as any) || 'Electrician',
+          skillLevel: 'Verified Expert',
+          zone: app.area?.includes('Nabadwip') ? 'Nabadwip Sector' : app.area?.includes('Howrah') ? 'Howrah Central' : 'Kolkata Metropolitan',
+          city: app.area?.includes('Nabadwip') ? 'Nabadwip' : app.area?.includes('Howrah') ? 'Howrah' : 'Kolkata',
+          shift: 'Morning (08:00 - 16:00)',
+          status: app.status === 'APPROVED' ? 'on_duty' : app.status === 'REJECTED' ? 'suspended' : 'off_duty',
+          rating: 4.8,
+          totalJobsDone: 12,
+          completionRate: 98,
+          onTimeRate: 95,
+          todayEarnings: 0,
+          pendingPayout: 0,
+          joinedDate: app.appliedAt ? app.appliedAt.split('T')[0] : '2026-02-01',
+          avatarUrl: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?auto=format&fit=crop&w=150&q=80',
+          compliance: {
+            safetyGearEquipped: true,
+            policeVerificationPassed: true,
+            aadhaarVerified: true,
+            idNumber: 'PUNCHX-WB-' + String(app.id || '999').slice(-4),
+            emergencyContact: '+91 98000 00000',
+            bloodGroup: 'O+',
+          },
+        }));
+
+        setWorkers((prev) => {
+          const map = new Map<string, Worker>();
+          prev.forEach((w) => map.set(w.id, w));
+          remoteWorkers.forEach((rw) => map.set(rw.id, { ...map.get(rw.id), ...rw }));
+          return Array.from(map.values());
+        });
+      }
+
+      // 3. Fetch remote platform settings
+      const settingsRes = await mainPlatformApi.fetchSettings();
+      if (settingsRes.success && settingsRes.data?.settings) {
+        setPlatformSettingsState(settingsRes.data.settings);
+      }
+
+      logAction('PLATFORM_SYNCED', 'System', 'main_api', `Reconciled local state with main platform backend (${health.serverInfo?.platform || 'Express Engine'})`);
+      addToast('Sync Complete', `Synchronized with main website backend (${health.latencyMs}ms latency).`, 'success');
+    } catch (err: any) {
+      addToast('Sync Notice', `Sync encountered an issue: ${err.message}. Local state preserved.`, 'warning');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const updatePlatformSettings = async (updates: Partial<DynamicPlatformSettings>) => {
+    const updated = {
+      ...platformSettings,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    setPlatformSettingsState(updated);
+    logAction('PLATFORM_SETTINGS_CHANGED', 'System', 'platform_config', `Updated fees and platform parameters: convenienceFee=₹${updated.convenienceFee}, surge=₹${updated.emergencySurcharge}`);
+    
+    if (connectionHealth.connected) {
+      try {
+        const res = await mainPlatformApi.updateSettings(updates);
+        if (res.success) {
+          addToast('Platform Settings Pushed', 'Updated fees and settings live on main PunchX website!', 'success');
+          return;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    addToast('Settings Saved Locally', 'Changes saved in admin console. Will sync when main platform is online.', 'info');
+  };
+
+  useEffect(() => {
+    testConnection();
+    const interval = setInterval(() => {
+      testConnection();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [apiBridgeConfig.baseUrl]);
 
   const setActiveTab = (tab: string, subtab?: string) => {
     setActiveTabState(tab);
@@ -251,6 +437,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const target = users.find((u) => u.id === userId);
     logAction('USER_BLOCKED', 'User', userId, `Suspended ${target?.name} (${target?.role}): ${reason}`);
     addToast('User Blocked', `${target?.name || 'User'} has been suspended from PunchX.`, 'warning');
+
+    if (connectionHealth.connected) {
+      mainPlatformApi.setUserBlockedStatus(userId, true, reason).then((res) => {
+        if (res.success) {
+          addToast('Main Platform Synced', `Suspension updated on live website database for ${target?.name || userId}.`, 'info');
+        }
+      }).catch(() => {});
+    }
   };
 
   const unblockUser = (userId: string) => {
@@ -271,12 +465,24 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const target = users.find((u) => u.id === userId);
     logAction('USER_UNBLOCKED', 'User', userId, `Restored account access for ${target?.name}`);
     addToast('User Unblocked', `${target?.name || 'User'} access has been restored.`, 'success');
+
+    if (connectionHealth.connected) {
+      mainPlatformApi.setUserBlockedStatus(userId, false).then((res) => {
+        if (res.success) {
+          addToast('Main Platform Synced', `Account restored on live website database for ${target?.name || userId}.`, 'info');
+        }
+      }).catch(() => {});
+    }
   };
 
   const updateUser = (userId: string, updates: Partial<User>) => {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...updates } : u)));
     logAction('USER_UPDATED', 'User', userId, `Updated details for ${userId}`);
     addToast('User Updated', 'Account details saved successfully.');
+
+    if (connectionHealth.connected) {
+      mainPlatformApi.updateUser(userId, updates).catch(() => {});
+    }
   };
 
   const verifyKYC = (docId: string, approve: boolean, reason?: string) => {
@@ -538,6 +744,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setWorkers((prev) => [newWorker, ...prev]);
     logAction('WORKER_ONBOARDED', 'Worker', newWorker.id, `Onboarded field worker: ${newWorker.name} (${newWorker.trade} - ${newWorker.city})`);
     addToast('Worker Onboarded', `${newWorker.name} added to ${newWorker.zone} roster as ${newWorker.trade}.`, 'success');
+
+    if (connectionHealth.connected) {
+      mainPlatformApi.onboardWorker({
+        id: newWorker.id,
+        name: newWorker.name,
+        phone: newWorker.phone,
+        email: newWorker.email,
+        trade: newWorker.trade,
+        zone: newWorker.zone,
+        city: newWorker.city,
+      } as any).then((res) => {
+        if (res.success) {
+          addToast('Main Platform Synced', `${newWorker.name} registered on live website database.`, 'info');
+        }
+      }).catch(() => {});
+    }
   };
 
   const updateWorker = (id: string, updates: Partial<Worker>) => {
@@ -576,6 +798,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     logAction('WORKER_STATUS_CHANGED', 'Worker', id, `Changed ${target?.name} status to ${status}${reason ? ` (${reason})` : ''}`);
     addToast('Duty Status Updated', `${target?.name} is now marked ${statusLabels[status]}.`, status === 'suspended' ? 'warning' : 'success');
+
+    if (connectionHealth.connected) {
+      const remoteStatus = status === 'suspended' ? 'REJECTED' : 'APPROVED';
+      mainPlatformApi.updateWorkerStatus(id, remoteStatus, reason).then((res) => {
+        if (res.success) {
+          addToast('Main Platform Synced', `Worker duty status updated on live website database.`, 'info');
+        }
+      }).catch(() => {});
+    }
   };
 
   const dispatchJobToWorker = (workerId: string, jobData: Omit<FieldJob, 'id'>) => {
@@ -599,6 +830,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const target = workers.find((w) => w.id === workerId);
     logAction('FIELD_JOB_DISPATCHED', 'Worker', workerId, `Dispatched Order #${newJob.bookingId} (${newJob.serviceTitle}) to ${target?.name}`);
     addToast('Job Dispatched', `Booking #${newJob.bookingId} assigned to ${target?.name}. Client notified.`, 'success');
+
+    if (connectionHealth.connected) {
+      mainPlatformApi.dispatchJobToWorker(workerId, jobData).then((res) => {
+        if (res.success) {
+          addToast('Main Platform Order Created', `Dispatch order created on live website! Order ID: ${res.data?.order?.id || newJob.bookingId}`, 'success');
+        }
+      }).catch(() => {});
+    }
   };
 
   const completeWorkerJob = (workerId: string) => {
@@ -765,7 +1004,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         sendAnnouncement,
         updateRolePermissions,
         addAdmin,
-        resetToDefaults
+        resetToDefaults,
+        connectionHealth,
+        isSyncing,
+        platformSettings,
+        apiBridgeConfig,
+        testConnection,
+        syncWithMainPlatform,
+        updatePlatformSettings,
+        saveApiBridgeConfig
       }}
     >
       {children}

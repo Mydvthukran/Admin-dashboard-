@@ -10,8 +10,11 @@ import {
   RotateCcw,
   Menu,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Radio,
+  RefreshCw
 } from 'lucide-react';
+import { PlatformBridgeModal } from '../modals/PlatformBridgeModal';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -27,11 +30,15 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     kycDocs,
     refunds,
     resetToDefaults,
-    setActiveTab
+    setActiveTab,
+    connectionHealth,
+    isSyncing,
+    syncWithMainPlatform
   } = useAdmin();
 
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showBridgeModal, setShowBridgeModal] = useState(false);
 
   const pendingKycCount = kycDocs.filter((k) => k.status === 'pending').length;
   const pendingRefundCount = refunds.filter((r) => r.status === 'pending').length;
@@ -62,6 +69,34 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       </div>
 
       <div className="header-right">
+        {/* Main Platform Link & Sync Pill */}
+        <div className="platform-bridge-actions">
+          <button
+            className={`platform-bridge-pill ${connectionHealth.connected ? 'connected' : 'standalone'}`}
+            onClick={() => setShowBridgeModal(true)}
+            title="Click to view Main Website Repository connection and synchronization"
+          >
+            <span className={`pulse-dot ${connectionHealth.connected ? 'active' : 'warn'}`}></span>
+            <Radio size={13} className={connectionHealth.connected ? 'pulse-spin' : ''} />
+            <span className="bridge-pill-text">
+              {connectionHealth.connected ? 'Platform Linked' : 'Standalone Mode'}
+            </span>
+            {connectionHealth.connected && (
+              <span className="bridge-pill-latency">{connectionHealth.latencyMs}ms</span>
+            )}
+          </button>
+
+          <button
+            className="header-sync-btn"
+            onClick={syncWithMainPlatform}
+            disabled={isSyncing}
+            title="Sync live users, workers & orders with main website"
+          >
+            <RefreshCw size={13} className={isSyncing ? 'spin-icon' : ''} />
+            <span className="sync-text">{isSyncing ? 'Syncing...' : 'Sync'}</span>
+          </button>
+        </div>
+
         {/* Geofence Cluster Indicator */}
         <div className="geofence-pills">
           <div className="geofence-pill" title="Kolkata Municipal & EM Bypass Geofence (8km radius active)">
@@ -206,6 +241,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           )}
         </div>
       </div>
+
+      {/* Main Platform Bridge & Sync Modal */}
+      <PlatformBridgeModal
+        isOpen={showBridgeModal}
+        onClose={() => setShowBridgeModal(false)}
+      />
     </header>
   );
 };

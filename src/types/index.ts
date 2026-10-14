@@ -236,7 +236,7 @@ export interface AuditLog {
   adminName: string;
   adminEmail: string;
   action: string;
-  entityType: 'User' | 'KYC' | 'Payment' | 'Refund' | 'Content' | 'Listing' | 'Coupon' | 'Role' | 'Commission' | 'Worker';
+  entityType: 'User' | 'KYC' | 'Payment' | 'Refund' | 'Content' | 'Listing' | 'Coupon' | 'Role' | 'Commission' | 'Worker' | 'System';
   entityId: string;
   details: string;
   ipAddress: string;
