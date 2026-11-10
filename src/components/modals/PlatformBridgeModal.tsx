@@ -195,7 +195,11 @@ adminRouter.patch('/orders/:id/status', async (req, res) => res.json({ success: 
                     {connectionHealth.connected ? '200 OK' : 'Offline / Standalone'}
                   </div>
                   <div className="metric-sub">
-                    Latency: {connectionHealth.latencyMs > 0 ? `${connectionHealth.latencyMs} ms` : 'N/A'}
+                    {connectionHealth.connected
+                      ? `Latency: ${connectionHealth.latencyMs} ms`
+                      : connectionHealth.errorMessage
+                      ? connectionHealth.errorMessage.slice(0, 40) + '...'
+                      : 'N/A'}
                   </div>
                 </div>
 
@@ -245,8 +249,45 @@ adminRouter.patch('/orders/:id/status', async (req, res) => res.json({ success: 
               <div className="bridge-config-section">
                 <h4>Bridge Endpoint Configuration</h4>
                 <p className="section-help-text">
-                  Point this Admin Console to the main platform backend. Supports local dev (`http://localhost:3000`) or production URL.
+                  Point this Admin Console to the main platform backend. Supports production live API or local development.
                 </p>
+
+                {/* Quick Presets */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                    onClick={() => {
+                      setBaseUrlInput('https://www.punchxapp.co.in');
+                      addToast('Preset Selected', 'Set to PunchX Production API (https://www.punchxapp.co.in)', 'info');
+                    }}
+                  >
+                    <Globe size={13} />
+                    <span>PunchX Live API (https://www.punchxapp.co.in)</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                    onClick={() => {
+                      setBaseUrlInput('http://localhost:3000');
+                      addToast('Preset Selected', 'Set to Local Backend (http://localhost:3000)', 'info');
+                    }}
+                  >
+                    <Code2 size={13} />
+                    <span>Local Dev API (http://localhost:3000)</span>
+                  </button>
+                </div>
+
+                {typeof window !== 'undefined' && window.location.protocol === 'https:' && baseUrlInput.startsWith('http://') && (
+                  <div className="alert-banner warning" style={{ marginBottom: '14px' }}>
+                    <Lock size={16} />
+                    <div>
+                      <strong>Mixed Content Warning:</strong> Browsers block insecure HTTP requests from HTTPS sites. Use <code>https://www.punchxapp.co.in</code> for production.
+                    </div>
+                  </div>
+                )}
 
                 <form onSubmit={handleSaveConfig} className="bridge-config-form">
                   <div className="form-row-2">

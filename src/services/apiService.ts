@@ -54,11 +54,18 @@ export interface DynamicPlatformSettings {
 const STORAGE_KEY_CONFIG = 'punchx_admin_bridge_config';
 
 export function getStoredApiConfig(): ApiConfig {
+  const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CONFIG);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed.baseUrl && parsed.adminApiKey) {
+        // If loaded on HTTPS, auto-migrate legacy localhost URL to prevent browser mixed-content blockage
+        if (isHttps && parsed.baseUrl.startsWith('http://localhost')) {
+          parsed.baseUrl = 'https://www.punchxapp.co.in';
+          saveApiConfig(parsed);
+        }
         return parsed;
       }
     }
@@ -66,8 +73,12 @@ export function getStoredApiConfig(): ApiConfig {
     // fallback
   }
 
+  const defaultUrl = isHttps
+    ? ((import.meta.env.VITE_MAIN_API_URL as string) || 'https://www.punchxapp.co.in')
+    : ((import.meta.env.VITE_MAIN_API_URL as string) || 'http://localhost:3000');
+
   return {
-    baseUrl: (import.meta.env.VITE_MAIN_API_URL as string) || 'http://localhost:3000',
+    baseUrl: defaultUrl,
     adminApiKey: (import.meta.env.VITE_ADMIN_API_KEY as string) || 'punchx_admin_secure_live_key_2026_9941a8',
   };
 }
@@ -135,7 +146,12 @@ class MainPlatformApiService {
       return { success: true, data: json };
     } catch (err: any) {
       const isAbort = err.name === 'AbortError';
-      const errorMsg = isAbort ? 'Request timed out (8s limit)' : (err.message || 'Network error');
+      const isMixedContent = typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http://');
+      const errorMsg = isMixedContent
+        ? 'Mixed Content Block: Browser cannot connect to HTTP from an HTTPS site. Use https://www.punchxapp.co.in'
+        : isAbort
+        ? 'Request timed out (8s limit)'
+        : (err.message || 'Network error');
       return {
         success: false,
         error: errorMsg,
@@ -148,6 +164,16 @@ class MainPlatformApiService {
    * Probes the main platform backend health and returns connection latency
    */
   public async probeHealth(): Promise<ConnectionHealth> {
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && this.config.baseUrl.startsWith('http://')) {
+      return {
+        connected: false,
+        status: 'error',
+        latencyMs: 0,
+        lastChecked: new Date().toISOString(),
+        errorMessage: 'Mixed Content Block: Modern browsers do not allow HTTPS websites to fetch insecure HTTP endpoints. Please use https://www.punchxapp.co.in or run this admin dashboard locally.',
+      };
+    }
+
     const startTime = performance.now();
     try {
       const res = await this.request<any>('/api/admin/health', { method: 'GET' });
